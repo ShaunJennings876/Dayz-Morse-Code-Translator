@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Morse Coordinate Decoder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one instrument-panel column — input, signal trace, decoded readout */
+:root{
+  --bg:#EDF1F0; --surface:#FFFFFF; --ink:#15201E; --muted:#596864; --line:#D2DBD8;
+  --accent:#0D6C78; --accent-soft:rgba(13,108,120,.11); --dash:#B5560E;
+  --ok:#2C7A4B; --ok-soft:rgba(44,122,75,.12); --warn:#A8510B; --warn-soft:rgba(168,81,11,.12);
+  --f-display:"Chakra Petch","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E1514; --surface:#162120; --ink:#E2EBE9; --muted:#8EA09C; --line:#293735;
+  --accent:#53C2CE; --accent-soft:rgba(83,194,206,.13); --dash:#F0A34A;
+  --ok:#5CC48A; --ok-soft:rgba(92,196,138,.13); --warn:#F0A34A; --warn-soft:rgba(240,163,74,.13); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1514; --surface:#162120; --ink:#E2EBE9; --muted:#8EA09C; --line:#293735;
+  --accent:#53C2CE; --accent-soft:rgba(83,194,206,.13); --dash:#F0A34A;
+  --ok:#5CC48A; --ok-soft:rgba(92,196,138,.13); --warn:#F0A34A; --warn-soft:rgba(240,163,74,.13); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:980px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:22px}
+header{display:grid;gap:6px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font-family:var(--f-display);font-weight:600;font-size:clamp(26px,4.4vw,36px);line-height:1.1;margin:0;text-wrap:balance}
+.lede{color:var(--muted);margin:0;max-width:64ch}
+.lede code{font-family:var(--f-mono);font-size:.92em;color:var(--ink)}
+h2{font-family:var(--f-display);font-weight:600;font-size:18px;margin:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:grid;gap:14px;min-width:0}
+.drop{border:1.5px dashed var(--line);border-radius:8px;padding:22px 18px;display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px;transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop p{margin:0;color:var(--muted);flex:1 1 260px;min-width:0}
+.drop strong{color:var(--ink);font-weight:600}
+button,.btn{font:inherit;font-weight:500;font-size:14px;border-radius:7px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);transition:background .15s,border-color .15s}
+button:hover,.btn:hover{border-color:var(--accent)}
+button:focus-visible,.btn:focus-within,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.primary:hover{filter:brightness(1.08)}
+.btn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+details.settings summary{cursor:pointer;color:var(--muted);font-size:14px;width:max-content;max-width:100%}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:12px}
+label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+input[type=number]{font-family:var(--f-mono);font-size:14px;padding:7px 9px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+.status{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;font-size:13px;color:var(--muted)}
+.status b{font-family:var(--f-mono);font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;letter-spacing:.02em}
+.chip.ex{background:var(--accent-soft);color:var(--accent)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.busy{background:var(--accent-soft);color:var(--accent)}
+.head-row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.trace{position:relative;width:100%;height:170px}
+canvas{display:block;width:100%;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;vertical-align:middle;margin-right:6px;border-radius:2px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;font-variant-numeric:tabular-nums}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.num{font-family:var(--f-mono);font-size:17px;font-weight:500}
+td.code{font-family:var(--f-mono);font-size:17px;font-weight:500;color:var(--accent);letter-spacing:.06em}
+td.raw{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+td.t{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.raw .x{color:var(--ink)} .raw .sep{opacity:.45}
+.morse{display:grid;gap:12px}
+.mset{display:grid;gap:6px}
+.mset h3{font-size:13px;font-weight:600;margin:0;color:var(--muted)}
+.digits{display:flex;flex-wrap:wrap;gap:6px}
+.dg{display:grid;justify-items:center;gap:3px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;min-width:56px}
+.dg .p{font-family:var(--f-mono);font-size:13px;letter-spacing:.12em;color:var(--muted)}
+.dg .d{font-family:var(--f-mono);font-size:16px;font-weight:500}
+.dg.c{border-color:var(--accent)} .dg.c .d{color:var(--accent)}
+.dg.bad{border-color:var(--warn)} .dg.bad .d{color:var(--warn)}
+.note{font-size:13px;color:var(--muted);margin:0}
+.err{color:var(--warn);font-weight:500}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Beep audio → coordinates</div>
+    <h1>Morse Coordinate Decoder</h1>
+    <p class="lede">Load a recording of the in-game beeps. Each digit is 5 beeps, and each set is 10 digits: X (3), Y (3) and a 4-digit code, so <code>072 107</code> reads as X 0.72, Y 1.07. Sets are separated by a long pause. Your audio is decoded in this browser and never uploaded.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="in-h">
+    <h2 id="in-h">Recording</h2>
+    <div class="drop" id="drop">
+      <p><strong>Drop an audio file here</strong> or choose one. MP3, WAV, M4A and OGG all work.</p>
+      <label class="btn primary" for="file">Choose audio file<input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg"></label>
+    </div>
+    <details class="settings" id="settings">
+      <summary>Decoder settings</summary>
+      <div class="grid">
+        <label for="freq">Beep tone (Hz, blank = auto)<input type="number" id="freq" min="100" max="8000" step="1" placeholder="auto"></label>
+        <label for="pause">Pause between sets (s)<input type="number" id="pause" min="0.5" step="0.5" value="4"></label>
+        <label for="xLen">X digits<input type="number" id="xLen" min="1" max="6" value="3"></label>
+        <label for="yLen">Y digits<input type="number" id="yLen" min="1" max="6" value="3"></label>
+        <label for="codeLen">Code digits<input type="number" id="codeLen" min="0" max="10" value="4"></label>
+        <label for="divisor">Divide X and Y by<input type="number" id="divisor" min="1" step="1" value="100"></label>
+      </div>
+      <p class="hint" style="margin-top:10px">Changing a setting re-decodes the current file. Any gap longer than the pause setting starts a new set, so lower it if two sets run together.</p>
+    </details>
+    <div class="status" id="status" aria-live="polite"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="out-h">
+    <div class="head-row">
+      <h2 id="out-h">Decoded sets</h2>
+      <div class="actions">
+        <button type="button" id="copyTsv">Copy for Excel</button>
+        <button type="button" id="copyCsv">Copy CSV</button>
+      </div>
+    </div>
+    <div class="tbl"><table>
+      <thead><tr><th>Set</th><th>Starts</th><th>X</th><th>Y</th><th>Code</th><th>Raw digits</th><th>Check</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <p class="note" id="copyMsg" aria-live="polite"></p>
+    <textarea id="fallback" readonly hidden style="width:100%;height:90px;font-family:var(--f-mono);font-size:12px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px"></textarea>
+  </section>
+
+  <section class="panel" aria-labelledby="sig-h">
+    <h2 id="sig-h">Signal trace</h2>
+    <div class="trace"><canvas id="cv" role="img" aria-label="Beep loudness over time with decoded sets highlighted"></canvas></div>
+    <div class="legend">
+      <span><i style="width:14px;height:10px;background:var(--accent-soft);border:1px solid var(--accent)"></i>Decoded set</span>
+      <span><i style="width:5px;height:10px;background:var(--accent)"></i>Dot</span>
+      <span><i style="width:14px;height:10px;background:var(--dash)"></i>Dash</span>
+      <span><i style="width:14px;height:0;border-top:1.5px dashed var(--muted)"></i>Beep threshold</span>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="m-h">
+    <h2 id="m-h">Beep groups</h2>
+    <p class="hint">Each box is 5 beeps and the digit they spell. Code digits are outlined in the accent colour.</p>
+    <div class="morse" id="morse"></div>
+    <p class="note" id="ignored"></p>
+  </section>
+</div>
+
+<script>
+// ---- Morse decoder core (pure, no DOM) ----
+const MORSE_DIGITS={'-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5','-....':'6','--...':'7','---..':'8','----.':'9'};
+function pct(arr,p){const a=Float64Array.from(arr).sort();return a[Math.min(a.length-1,Math.max(0,Math.floor(p/100*(a.length-1))))];}
+function fftMag(re){const n=re.length,im=new Float64Array(n);re=Float64Array.from(re);
+  for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){[re[i],re[j]]=[re[j],re[i]];}}
+  for(let len=2;len<=n;len<<=1){const ang=-2*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){let cr=1,ci=0;for(let k=0;k<len/2;k++){const a=i+k,b=a+len/2;
+      const tr=re[b]*cr-im[b]*ci,ti=re[b]*ci+im[b]*cr;re[b]=re[a]-tr;im[b]=im[a]-ti;re[a]+=tr;im[a]+=ti;
+      const nr=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=nr;}}}
+  const m=new Float64Array(n/2);for(let i=0;i<n/2;i++)m[i]=Math.hypot(re[i],im[i]);return m;}
+function detectTone(x,sr){const N=4096;const n=Math.min(400,Math.floor(x.length/N));const step=Math.floor(x.length/n);const acc=new Float64Array(N/2);
+  for(let k=0;k<n;k++){const st=k*step;if(st+N>x.length)break;const w=new Float64Array(N);
+    for(let j=0;j<N;j++)w[j]=x[st+j]*(0.5-0.5*Math.cos(2*Math.PI*j/(N-1)));const m=fftMag(w);for(let j=0;j<N/2;j++)acc[j]+=m[j]*m[j];}
+  // score = peak power relative to its neighbourhood (a steady beep is a narrow spike)
+  let best=0,bi=0;for(let j=8;j<N/2-8;j++){const f=j*sr/N;if(f<300||f>5000)continue;let nb=0;for(let d=6;d<=12;d++)nb+=acc[j-d]+acc[j+d];nb/=14;
+    const sc=acc[j]/(nb+1e-12);if(sc>best&&acc[j]>=acc[j-1]&&acc[j]>=acc[j+1]){best=sc;bi=j;}}
+  // parabolic refine
+  const a=acc[bi-1],b=acc[bi],c=acc[bi+1];const off=(a-c)/(2*(a-2*b+c)||1);return (bi+off)*sr/N;}
+function envelope(x,sr,f){const hopS=Math.round(sr*0.005),N=Math.round(sr*0.01);const c=2*Math.cos(2*Math.PI*f/sr);const out=[];
+  for(let i=0;i+N<=x.length;i+=hopS){let s1=0,s2=0;for(let j=0;j<N;j++){const s=x[i+j]+c*s1-s2;s2=s1;s1=s;}
+    out.push(Math.sqrt(Math.max(0,s1*s1+s2*s2-c*s1*s2))/N);}
+  const m=new Float64Array(out.length);for(let i=0;i<out.length;i++){const w=out.slice(Math.max(0,i-2),i+3).sort((a,b)=>a-b);m[i]=w[w.length>>1];}
+  return {env:m,dt:hopS/sr};}
+function decodeMorse(x,sr,opt={}){
+  const o=Object.assign({freq:0,pauseSec:4,digitsPerSet:10,xLen:3,yLen:3,divisor:100},opt);
+  const log=[];const freq=o.freq>0?o.freq:detectTone(x,sr);
+  const {env,dt}=envelope(x,sr,freq);const lo=pct(env,20),hi=pct(env,99.5);const thr=lo+0.25*(hi-lo);
+  let segs=[];let st=-1;for(let i=0;i<=env.length;i++){const on=i<env.length&&env[i]>thr;
+    if(on&&st<0)st=i;else if(!on&&st>=0){segs.push({t:st*dt,len:(i-st)*dt});st=-1;}}
+  const raw=segs.length;segs=segs.filter(s=>s.len>=0.02);
+  // 2-means on log length
+  let L=segs.map(s=>Math.log(s.len));let c1=Math.min(...L),c2=Math.max(...L);
+  for(let it=0;it<30;it++){let a=0,na=0,b=0,nb=0;for(const v of L){if(Math.abs(v-c1)<=Math.abs(v-c2)){a+=v;na++;}else{b+=v;nb++;}}
+    if(na)c1=a/na;if(nb)c2=b/nb;}
+  const dot=Math.exp(c1),dash=Math.exp(c2);
+  for(const s of segs){const d1=Math.abs(Math.log(s.len/dot)),d2=Math.abs(Math.log(s.len/dash));s.sym=d1<=d2?'.':'-';s.dev=Math.min(d1,d2);}
+  segs=segs.filter(s=>s.dev<Math.log(1.6));
+  // remove overlapping-in-time noise: pairs closer than 40% of median gap, drop worse fit
+  const gaps=()=>segs.slice(1).map((s,i)=>s.t-(segs[i].t+segs[i].len));
+  const medGap=pct(gaps(),50);let changed=true;
+  while(changed&&segs.length>1){changed=false;const g=gaps();let worst=-1;
+    for(let i=0;i<g.length;i++)if(g[i]<0.4*medGap){worst=i;break;}
+    if(worst>=0){const a=segs[worst],b=segs[worst+1];segs.splice(a.dev>=b.dev?worst:worst+1,1);changed=true;}}
+  // split into sets on long pauses
+  const sets=[];let cur=[];for(let i=0;i<segs.length;i++){if(i&&segs[i].t-(segs[i-1].t+segs[i-1].len)>o.pauseSec){sets.push(cur);cur=[];}cur.push(segs[i]);}
+  if(cur.length)sets.push(cur);
+  const need=o.digitsPerSet*5;
+  const results=sets.map((s,i)=>{const syms=s.map(z=>z.sym).join('');const groups=[];for(let k=0;k<syms.length;k+=5)groups.push(syms.slice(k,k+5));
+    const digits=groups.map(g=>g.length===5?(MORSE_DIGITS[g]||'?'):'?').join('');
+    const ok=syms.length===need&&!digits.includes('?');
+    const xs=digits.slice(0,o.xLen),ys=digits.slice(o.xLen,o.xLen+o.yLen),code=digits.slice(o.xLen+o.yLen);
+    return {start:s[0].t,end:s[s.length-1].t+s[s.length-1].len,symbols:syms.length,morse:groups.join(' '),digits,ok,
+      xDigits:xs,yDigits:ys,code,x:/^\d+$/.test(xs)?Number(xs)/o.divisor:null,y:/^\d+$/.test(ys)?Number(ys)/o.divisor:null};});
+  return {freq,dot,dash,rawSegments:raw,symbols:segs.length,sets:results,valid:results.filter(r=>r.ok),
+    ignored:results.filter(r=>!r.ok),env,dt,thr,segs};}
+
+
+const EXAMPLE={"name":"AUDIO-2026-10-20-11-57-41.mp3","duration":309.31201814058954,"freq":988.9887328257628,"dot":0.06536277864916576,"dash":0.46500855019832726,"rawSegments":229,"symbols":161,"envDt":0.26058956916099774,"env":[3,2,3,2,2,1,1,2,27,29,28,2,2,2,2,26,27,27,2,1,1,1,2,27,26,11,2,1,1,2,27,26,26,2,2,2,2,27,27,25,2,2,1,2,2,2,27,27,25,2,1,1,2,26,27,25,2,2,2,2,2,38,3,2,37,3,2,1,37,3,2,2,2,38,4,1,38,3,1,2,38,3,3,26,26,25,2,2,1,2,26,28,28,2,2,2,2,2,1,27,29,27,2,1,2,2,17,27,26,3,2,2,1,1,27,27,23,1,1,1,2,27,29,28,2,1,1,2,26,28,27,2,1,2,1,2,1,26,27,27,2,2,1,1,25,27,26,2,1,1,2,1,27,26,24,1,1,1,2,26,28,27,2,1,1,2,38,38,3,2,2,26,27,25,2,2,2,1,2,27,27,2,2,1,2,1,27,28,27,2,2,2,2,27,28,27,2,1,1,2,3,27,28,2,2,2,1,1,27,28,26,2,2,2,2,27,28,27,3,2,2,2,25,28,29,3,3,3,2,2,38,3,2,37,3,2,2,4,26,28,28,3,2,3,2,2,38,4,2,37,4,2,22,37,3,2,38,4,3,2,2,27,26,24,2,1,3,2,27,26,26,25,11,3,2,23,29,29,3,2,3,2,2,27,26,23,2,3,2,1,26,27,26,3,2,2,1,1,1,37,3,2,38,38,1,2,27,26,22,1,1,2,2,27,27,26,2,1,1,1,26,28,27,3,1,2,1,1,1,1,1,2,1,2,2,1,1,2,1,1,1,2,2,1,1,1,1,1,1,1,1,28,31,3,1,1,1,1,27,27,25,2,2,2,2,26,27,25,2,2,2,2,1,27,25,2,2,1,2,3,28,27,24,2,1,2,2,1,2,27,26,2,2,1,3,1,27,27,27,2,2,2,2,26,27,27,2,1,1,1,2,28,28,2,2,2,2,2,38,3,2,1,1,27,27,25,1,1,1,1,38,36,1,1,37,3,1,37,2,1,1,37,3,2,2,1,37,4,1,27,27,24,3,1,1,1,26,28,28,2,1,1,1,1,27,26,3,1,2,1,1,27,27,25,2,1,2,1,1,2,27,27,23,1,1,1,2,26,26,25,1,1,2,1,26,27,27,2,2,2,1,1,27,27,2,1,2,1,1,26,26,25,2,1,1,1,1,1,27,26,21,1,1,1,1,27,26,26,2,1,1,1,26,26,26,2,1,1,1,1,26,25,3,1,1,1,1,38,3,1,26,27,26,2,2,2,2,2,38,2,2,37,29,2,2,37,2,2,38,2,2,4,1,37,2,2,2,38,2,2,27,26,26,2,2,1,2,25,29,28,2,2,2,2,2,27,27,2,2,2,2,1,3,26,29,28,3,2,2,1,2,27,27,10,1,2,2,4,27,26,25,2,4,2,3,37,36,1,1,37,3,3,1,2,38,3,1,38,20,1,1,37,3,1,37,2,1,3,37,4,1,1,2,1,1,1,3,2,2,2,1,2,1,1,1,1,1,1,1,2,2,2,3,2,38,2,2,7,27,27,2,2,2,2,1,26,27,25,1,1,1,1,26,27,26,3,1,1,1,24,27,25,2,1,1,1,1,1,38,38,3,1,28,26,24,1,1,1,1,27,29,28,2,1,1,1,26,29,28,2,1,1,2,1,27,26,2,1,1,1,1,1,18,38,3,1,37,4,2,37,37,3,1,38,4,1,26,27,26,2,1,1,1,1,1,27,26,24,2,1,1,1,26,27,28,3,1,1,1,1,26,28,27,1,1,1,1,26,26,24,2,1,1,2,26,27,25,3,1,1,1,1,1,38,35,1,1,38,4,1,37,4,1,1,37,5,1,37,4,1,1,1,36,4,1,1,36,5,1,36,5,1,25,27,27,3,1,1,1,1,26,28,3,1,1,1,1,26,29,28,2,1,1,1,25,29,28,3,1,1,1,1,36,4,1,37,5,1,1,36,4,1,1,1,26,23,3,1,1,1,1,26,28,26,2,1,1,1,26,29,27,3,1,1,1,9,36,4,1,37,5,1,1,1,26,29,27,3,1,1,1,26,27,27,3,1,1,1,13,26,23,3,1,1,1,1,26,27,25,1,1,1,1,36,5,1,1,1,37,4,1,1,37,4,1,37,5,1,1,37,4,1,26,26,24,2,1,1,1,1,1,2,1,1,1,1,1,2,1,2,1,1,1,2,5,3,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,17,46,3,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,9,18,13,14,41,23,5,19,2,2,2,1,5,3,3,2,4,2,3,2,1,1,2,1,1,2,1,1,1,2,11,6,1,1,1,1,5,1,1,1,1,1,1,1,1,1,1,2,38,37,1,2,1,1,1,1,1,1,1,20,15,44,9,8,1,24,17,13,19,1,1,2,100,17,17,3,26,34,37,64,22,12,1,1,2,64,11,23,21,10,3,1,1,37,8,47,33,33,67,25,2,13,29,23,2,1,1,1,1,1,1,1,2,4,2,26,31,7],"thr":0.09627714819879493,"segs":[[2.245,0.471,"-"],[4.149,0.471,"-"],[6.049,0.471,"-"],[7.943,0.466,"-"],[9.847,0.466,"-"],[12.147,0.471,"-"],[14.042,0.471,"-"],[15.956,0.075,"."],[16.853,0.075,"."],[17.75,0.08,"."],[19.053,0.075,"."],[19.955,0.075,"."],[20.852,0.075,"."],[21.744,0.471,"-"],[23.643,0.471,"-"],[25.974,0.471,"-"],[27.878,0.466,"-"],[29.777,0.466,"-"],[31.682,0.466,"-"],[33.581,0.466,"-"],[35.876,0.471,"-"],[37.775,0.471,"-"],[39.68,0.471,"-"],[41.574,0.471,"-"],[43.493,0.075,"."],[44.781,0.466,"-"],[46.681,0.466,"-"],[48.575,0.471,"-"],[50.479,0.471,"-"],[52.379,0.471,"-"],[54.283,0.471,"-"],[56.177,0.471,"-"],[58.081,0.466,"-"],[59.981,0.08,"."],[60.888,0.08,"."],[62.211,0.466,"-"],[64.115,0.075,"."],[65.022,0.075,"."],[65.924,0.075,"."],[66.816,0.08,"."],[68.109,0.466,"-"],[70.013,0.466,"-"],[71.918,0.466,"-"],[73.807,0.471,"-"],[75.711,0.471,"-"],[78.022,0.075,"."],[78.919,0.08,"."],[79.811,0.466,"-"],[81.715,0.466,"-"],[83.604,0.471,"-"],[91.512,0.466,"-"],[93.416,0.466,"-"],[95.311,0.471,"-"],[97.215,0.471,"-"],[99.109,0.471,"-"],[101.414,0.471,"-"],[103.314,0.466,"-"],[105.213,0.466,"-"],[107.107,0.471,"-"],[109.022,0.075,"."],[110.35,0.466,"-"],[112.254,0.075,"."],[113.156,0.075,"."],[114.053,0.075,"."],[114.96,0.075,"."],[116.253,0.08,"."],[117.145,0.471,"-"],[119.044,0.471,"-"],[120.944,0.471,"-"],[122.843,0.471,"-"],[125.148,0.471,"-"],[127.047,0.466,"-"],[128.947,0.466,"-"],[130.851,0.466,"-"],[132.74,0.471,"-"],[135.046,0.471,"-"],[136.95,0.471,"-"],[138.849,0.471,"-"],[140.748,0.466,"-"],[142.648,0.08,"."],[143.54,0.471,"-"],[145.454,0.075,"."],[146.381,0.08,"."],[147.283,0.075,"."],[148.19,0.075,"."],[149.488,0.075,"."],[150.385,0.08,"."],[151.282,0.466,"-"],[153.182,0.466,"-"],[155.081,0.471,"-"],[157.376,0.471,"-"],[159.275,0.471,"-"],[161.175,0.466,"-"],[163.079,0.08,"."],[163.981,0.08,"."],[165.289,0.075,"."],[166.186,0.075,"."],[167.088,0.075,"."],[167.985,0.08,"."],[168.882,0.08,"."],[175.783,0.08,"."],[176.68,0.466,"-"],[178.579,0.466,"-"],[180.513,0.471,"-"],[182.408,0.466,"-"],[184.718,0.075,"."],[185.61,0.471,"-"],[187.509,0.471,"-"],[189.409,0.471,"-"],[191.313,0.471,"-"],[193.613,0.08,"."],[194.52,0.08,"."],[195.422,0.075,"."],[196.319,0.075,"."],[197.211,0.471,"-"],[199.511,0.466,"-"],[201.411,0.466,"-"],[203.345,0.471,"-"],[205.249,0.466,"-"],[207.149,0.466,"-"],[209.449,0.075,"."],[210.351,0.075,"."],[211.253,0.075,"."],[212.145,0.08,"."],[213.047,0.08,"."],[214.355,0.075,"."],[215.252,0.075,"."],[216.149,0.075,"."],[217.046,0.471,"-"],[218.94,0.466,"-"],[220.845,0.471,"-"],[222.749,0.466,"-"],[224.648,0.075,"."],[225.585,0.08,"."],[226.487,0.08,"."],[227.775,0.471,"-"],[229.675,0.471,"-"],[231.574,0.471,"-"],[233.488,0.075,"."],[234.38,0.08,"."],[235.673,0.471,"-"],[237.572,0.471,"-"],[239.477,0.471,"-"],[241.381,0.471,"-"],[243.29,0.075,"."],[244.588,0.08,"."],[245.485,0.075,"."],[246.387,0.075,"."],[247.32,0.08,"."],[248.207,0.471,"-"],[265.791,0.055,"."],[279.778,0.06,"."],[291.444,0.06,"."],[294.486,0.07,"."],[295.624,0.065,"."],[297.879,0.065,"."],[298.52,0.07,"."],[299.553,0.055,"."],[301.292,0.045,"."],[304.454,0.1,"."],[305.521,0.05,"."]],"sets":[{"start":2.25,"end":84.08,"symbols":50,"morse":"----- --... ...-- ----- ----. ----- ---.. -.... ----- ..---","digits":"0730908602","ok":true,"xDigits":"073","yDigits":"090","code":"8602","x":0.73,"y":0.9},{"start":91.51,"end":168.96,"symbols":50,"morse":"----- ----. -.... .---- ----- ----. -.... ..--- ---.. .....","digits":"0961096285","ok":true,"xDigits":"096","yDigits":"109","code":"6285","x":0.96,"y":1.09},{"start":175.78,"end":248.68,"symbols":50,"morse":".---- .---- ....- ----- ..... ...-- --... ---.. ----. ....-","digits":"1140537894","ok":true,"xDigits":"114","yDigits":"053","code":"7894","x":1.14,"y":0.53},{"start":265.79,"end":265.85,"symbols":1,"morse":".","digits":"?","ok":false,"xDigits":"?","yDigits":"","code":"","x":null,"y":null},{"start":279.78,"end":279.84,"symbols":1,"morse":".","digits":"?","ok":false,"xDigits":"?","yDigits":"","code":"","x":null,"y":null},{"start":291.44,"end":305.57,"symbols":9,"morse":"..... ....","digits":"5?","ok":false,"xDigits":"5?","yDigits":"","code":"","x":null,"y":null}]};
+const $=id=>document.getElementById(id);
+let current=null, samples=null, fileName='';
+
+function opts(){
+  const v=id=>parseFloat($(id).value);
+  const x=Math.max(1,v('xLen')||3),y=Math.max(1,v('yLen')||3),c=Math.max(0,isNaN(v('codeLen'))?4:v('codeLen'));
+  return {freq:v('freq')>0?v('freq'):0,pauseSec:v('pause')>0?v('pause'):4,xLen:x,yLen:y,digitsPerSet:x+y+c,divisor:v('divisor')>0?v('divisor'):100};
+}
+const fmtT=s=>{s=Math.max(0,s);const m=Math.floor(s/60),r=Math.floor(s%60);return m+':'+String(r).padStart(2,'0');};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtXY=(v,o)=>v==null?'—':v.toFixed(Math.max(0,Math.round(Math.log10(o.divisor))));
+
+function pack(r,name,dur){ // shrink a live result into the same shape as EXAMPLE
+  const B=1200,per=Math.max(1,Math.ceil(r.env.length/B));const env=[];let mx=0;
+  for(let i=0;i<r.env.length;i+=per){let m=0;for(let j=i;j<Math.min(i+per,r.env.length);j++)m=Math.max(m,r.env[j]);env.push(m);mx=Math.max(mx,m);}
+  mx=mx||1;
+  return {name,duration:dur,freq:r.freq,dot:r.dot,dash:r.dash,symbols:r.symbols,envDt:per*r.dt,env:env.map(v=>v/mx*100),thr:r.thr/mx,
+    segs:r.segs.map(s=>[s.t,s.len,s.sym]),sets:r.sets};
+}
+
+function render(d,isExample){
+  current=d;const o=opts();
+  const valid=d.sets.filter(s=>s.ok),bad=d.sets.filter(s=>!s.ok&&s.symbols>=5);
+  const st=$('status');
+  st.innerHTML=(isExample?'<span class="chip ex">Example · your 20 Oct recording</span>':'')+
+    `<span>File <b>${esc(d.name)}</b></span><span>Length <b>${fmtT(d.duration)}</b></span><span>Tone <b>${Math.round(d.freq)} Hz</b></span>`+
+    `<span>Dot / dash <b>${(d.dot*1000).toFixed(0)} / ${(d.dash*1000).toFixed(0)} ms</b></span>`+
+    `<span>Sets <b>${valid.length}</b></span>`+(valid.length?'':'<span class="err">No complete sets found. Try setting the beep tone or a shorter pause in Decoder settings.</span>');
+  const rows=$('rows');rows.innerHTML='';
+  const shown=d.sets.filter(s=>s.ok||s.symbols>=Math.min(25,o.digitsPerSet*5/2));
+  shown.forEach((s,i)=>{
+    const raw=`<span class="x">${esc(s.xDigits)}</span> <span class="x">${esc(s.yDigits)}</span> <span class="sep">·</span> ${esc(s.code)}`;
+    const chk=s.ok?'<span class="chip ok">50 beeps ✓</span>'.replace('50',s.symbols):`<span class="chip warn">${s.symbols} beeps — expected ${o.digitsPerSet*5}</span>`;
+    rows.insertAdjacentHTML('beforeend',`<tr><td>${i+1}</td><td class="t">${fmtT(s.start)}</td><td class="num">${fmtXY(s.x,o)}</td><td class="num">${fmtXY(s.y,o)}</td><td class="code">${esc(s.code||'—')}</td><td class="raw">${raw}</td><td>${chk}</td></tr>`);
+  });
+  if(!shown.length)rows.innerHTML='<tr><td colspan="7" class="note">Nothing decoded yet.</td></tr>';
+  // morse groups
+  const m=$('morse');m.innerHTML='';
+  shown.forEach((s,i)=>{
+    const groups=s.morse.split(' ');const xy=o.xLen+o.yLen;
+    const boxes=groups.map((g,k)=>{const dch=s.digits[k]||'?';const cls=dch==='?'?'bad':(k>=xy?'c':'');
+      return `<div class="dg ${cls}"><span class="p">${esc(g.replace(/\./g,'·').replace(/-/g,'–'))}</span><span class="d">${esc(dch)}</span></div>`;}).join('');
+    m.insertAdjacentHTML('beforeend',`<div class="mset"><h3>Set ${i+1} · starts ${fmtT(s.start)}</h3><div class="digits">${boxes}</div></div>`);
+  });
+  const noise=d.sets.length-shown.length;
+  $('ignored').textContent=noise?`${noise} short burst${noise>1?'s':''} of other game sounds ${noise>1?'were':'was'} ignored (fewer than half a set of beeps).`:'';
+  draw();
+}
+
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function draw(){
+  const d=current;if(!d)return;const cv=$('cv');const r=cv.getBoundingClientRect();const dpr=window.devicePixelRatio||1;
+  cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr);const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);
+  const W=r.width,H=r.height,padB=22,laneH=18,top=6,envH=H-padB-laneH-top-6;const X=t=>t/d.duration*W;
+  g.clearRect(0,0,W,H);
+  const o=opts();
+  d.sets.filter(s=>s.ok).forEach((s,i)=>{g.fillStyle=css('--accent-soft');g.fillRect(X(s.start),top,Math.max(2,X(s.end)-X(s.start)),envH+laneH+6);
+    g.fillStyle=css('--accent');g.font='600 11px '+css('--f-body');g.fillText('Set '+(i+1),X(s.start)+4,top+12);});
+  // envelope
+  const max=Math.max(...d.env)||1;g.beginPath();g.moveTo(0,top+envH);
+  d.env.forEach((v,i)=>g.lineTo(X(i*d.envDt),top+envH-v/max*envH*0.92));g.lineTo(W,top+envH);g.closePath();
+  g.fillStyle=css('--muted');g.globalAlpha=.35;g.fill();g.globalAlpha=1;
+  // threshold
+  const ty=top+envH-(d.thr*100)/max*envH*0.92;g.setLineDash([4,4]);g.strokeStyle=css('--muted');g.lineWidth=1;g.beginPath();g.moveTo(0,ty);g.lineTo(W,ty);g.stroke();g.setLineDash([]);
+  // symbols lane
+  const ly=top+envH+6;d.segs.forEach(([t,len,sym])=>{g.fillStyle=sym==='-'?css('--dash'):css('--accent');
+    const w=Math.max(sym==='-'?3:1.5,X(t+len)-X(t));g.fillRect(X(t),ly+(sym==='-'?2:5),w,sym==='-'?laneH-4:laneH-10);});
+  // axis
+  g.fillStyle=css('--muted');g.font='11px '+css('--f-mono');g.strokeStyle=css('--line');
+  const step=[10,15,30,60,120,300].find(s=>d.duration/s<=Math.max(3,W/70))||600;
+  for(let t=0;t<=d.duration;t+=step){const x=X(t);g.beginPath();g.moveTo(x,H-padB);g.lineTo(x,H-padB+4);g.stroke();
+    const lab=fmtT(t);const tw=g.measureText(lab).width;g.fillText(lab,Math.min(W-tw,Math.max(0,x-tw/2)),H-6);}
+}
+
+async function decodeFile(f){
+  fileName=f.name;$('status').innerHTML='<span class="chip busy">Decoding…</span><span>'+esc(f.name)+'</span>';
+  try{
+    const buf=await f.arrayBuffer();const AC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+    const ctx=new AC(1,1,44100);const ab=await new Promise((res,rej)=>{const p=ctx.decodeAudioData(buf,res,rej);if(p&&p.then)p.then(res,rej);});
+    const n=ab.length,ch=ab.numberOfChannels,x=new Float32Array(n);
+    for(let c=0;c<ch;c++){const d=ab.getChannelData(c);for(let i=0;i<n;i++)x[i]+=d[i]/ch;}
+    samples={x,sr:ab.sampleRate};run();
+  }catch(e){$('status').innerHTML=`<span class="err">Couldn't read ${esc(f.name)} as audio. Try exporting it as MP3 or WAV and loading it again.</span>`;}
+}
+function run(){
+  if(!samples){render(EXAMPLE,true);return;}
+  $('status').innerHTML='<span class="chip busy">Decoding…</span>';
+  setTimeout(()=>{const r=decodeMorse(samples.x,samples.sr,opts());render(pack(r,fileName,samples.x.length/samples.sr),false);},20);
+}
+
+function table(sep){
+  const o=opts();const valid=current?current.sets.filter(s=>s.ok):[];
+  const lines=[['Set','Start','X','Y','Code','Raw digits'].join(sep)];
+  valid.forEach((s,i)=>lines.push([i+1,fmtT(s.start),fmtXY(s.x,o),fmtXY(s.y,o),sep===','?`="${s.code}"`:"'"+s.code,s.digits].join(sep)));
+  return lines.join('\n');
+}
+async function copy(text,label){
+  const msg=$('copyMsg'),fb=$('fallback');
+  try{await navigator.clipboard.writeText(text);fb.hidden=true;msg.textContent=label+' copied. Paste it into Excel or Google Sheets.';}
+  catch(e){fb.hidden=false;fb.value=text;fb.focus();fb.select();msg.textContent='Your browser blocked copying. The text is selected below; press Ctrl+C (or ⌘C).';}
+}
+$('copyTsv').addEventListener('click',()=>copy(table('\t'),'Table'));
+$('copyCsv').addEventListener('click',()=>copy(table(','),'CSV'));
+$('file').addEventListener('change',e=>{const f=e.target.files[0];if(f)decodeFile(f);});
+const drop=$('drop');
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)decodeFile(f);});
+['freq','pause','xLen','yLen','codeLen','divisor'].forEach(id=>$(id).addEventListener('change',run));
+window.addEventListener('resize',draw);
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);}catch(e){}
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+render(EXAMPLE,true);
+</script>
+
+</body>
+</html>
